@@ -8,6 +8,10 @@ plugins {
 android {
     namespace = "ru.fsconfig"
     compileSdk = 35
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
     defaultConfig {
         applicationId = "ru.fsconfig"
         minSdk = 26
@@ -16,6 +20,10 @@ android {
         versionName = "0.1.0"
     }
     buildFeatures { compose = true }
+}
+
+tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+    kotlinOptions.jvmTarget = "17"
 }
 
 dependencies {
