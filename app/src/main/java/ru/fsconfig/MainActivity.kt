@@ -185,6 +185,7 @@ private fun FsConfigApp() {
                     0 -> ConnectTab(
                         status = status,
                         error = uiError,
+                        document = document,
                         onDiscover = {
                             scope.launch {
                                 busy = true
@@ -255,22 +256,62 @@ private fun LoadingState() {
 private fun ConnectTab(
     status: String,
     error: String?,
+    document: ConfigurationDocument?,
     onDiscover: () -> Unit,
     onRealDevice: () -> Unit
 ) {
-    Column(
+    LazyColumn(
         Modifier.fillMaxSize().padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Text("Подключение", style = MaterialTheme.typography.headlineSmall)
-        Text(status)
-        error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-        Button(onClick = onDiscover) { Text("Найти simulator") }
-        OutlinedButton(onClick = onRealDevice) { Text("Подключить реальный прибор") }
-        Text(
-            "USB OTG/RS-485 и Wi‑Fi появятся после подключения официального протокола.",
-            style = MaterialTheme.typography.bodySmall
-        )
+        item { Text("Подключение", style = MaterialTheme.typography.headlineSmall) }
+        item { Text(status) }
+        error?.let { message ->
+            item { Text(message, color = MaterialTheme.colorScheme.error) }
+        }
+        item {
+            Text("Доступные каналы", style = MaterialTheme.typography.titleMedium)
+            Text("USB-переходники и сетевые точки появятся после реализации официального транспорта.")
+        }
+        item {
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("USB / RS-485", style = MaterialTheme.typography.titleMedium)
+                    Text("Состояние: не подключён")
+                    Text("Автоматический поиск доступен в simulator")
+                }
+            }
+        }
+        item {
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Wi‑Fi", style = MaterialTheme.typography.titleMedium)
+                    Text("Состояние: ожидает официального endpoint")
+                    Text("Сетевые параметры не угадываются и не отправляются.")
+                }
+            }
+        }
+        item {
+            Text("Идентифицированный прибор", style = MaterialTheme.typography.titleMedium)
+            if (document == null) {
+                Text("Прибор ещё не идентифицирован")
+            } else {
+                Card(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(document.device.model ?: "Модель не указана")
+                        Text("Адрес: ${document.device.address}")
+                        Text("Версия: ${document.device.firmwareVersion ?: "—"}")
+                        Text("Серийный номер: ${document.device.serialNumber ?: "—"}")
+                    }
+                }
+            }
+        }
+        item {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = onDiscover) { Text("Найти simulator") }
+                OutlinedButton(onClick = onRealDevice) { Text("Реальный канал") }
+            }
+        }
     }
 }
 
