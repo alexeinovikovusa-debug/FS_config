@@ -29,9 +29,8 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
-import androidx.compose.material3.ExposedDropdownMenuBox
-import androidx.compose.material3.ExposedDropdownMenuDefaults
-import androidx.compose.material3.ExposedDropdownMenu
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -124,53 +123,55 @@ private fun FsConfigApp() {
                     context.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use {
                         it.write(ConfigurationJson.encode(document!!))
                     } ?: error("Не удалось открыть файл")
+                }.onSuccess {
+                    status = "Конфигурация сохранена"
+                }.onFailure { failure ->
+                    uiError = "Ошибка сохранения: ${failure.message ?: "неизвестная ошибка"}"
+                    snackbar.showSnackbar(uiError!!)
                 }
-                val openCnu = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-                    if (uri != null) {
-                        scope.launch {
-                            busy = true
-                            uiError = null
-                            runCatching {
-                                val text = context.contentResolver.openInputStream(uri)?.bufferedReader()
-                                    ?.use { it.readText() } ?: error("Пустой CNU-файл")
-                                CnuCodec.parse(text)
-                            }.onSuccess { parsed ->
-                                cnuDocument = parsed.document
-                                cnuWarnings = parsed.warnings
-                                status = "Открыт CNU: ${parsed.document.rows.size} строк raw-конфигурации"
-                                tab = 3
-                            }.onFailure { failure ->
-                                uiError = "Ошибка CNU: ${failure.message ?: "неизвестная ошибка"}"
-                                snackbar.showSnackbar(uiError!!)
-                            }
-                            busy = false
-                        }
-                    }
+                busy = false
+            }
+        }
+    }
+    val openCnu = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            scope.launch {
+                busy = true
+                uiError = null
+                runCatching {
+                    val text = context.contentResolver.openInputStream(uri)?.bufferedReader()
+                        ?.use { it.readText() } ?: error("Пустой CNU-файл")
+                    CnuCodec.parse(text)
+                }.onSuccess { parsed ->
+                    cnuDocument = parsed.document
+                    cnuWarnings = parsed.warnings
+                    status = "Открыт CNU: ${parsed.document.rows.size} строк raw-конфигурации"
+                    tab = 3
+                }.onFailure { failure ->
+                    uiError = "Ошибка CNU: ${failure.message ?: "неизвестная ошибка"}"
+                    snackbar.showSnackbar(uiError!!)
                 }
-                val saveCnu = rememberLauncherForActivityResult(
-                    ActivityResultContracts.CreateDocument("application/octet-stream")
-                ) { uri ->
-                    if (uri != null && cnuDocument != null) {
-                        scope.launch {
-                            busy = true
-                            runCatching {
-                                context.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use {
-                                    it.write(CnuCodec.encode(cnuDocument!!))
-                                } ?: error("Не удалось открыть CNU-файл")
-                            }.onSuccess { status = "CNU сохранён без изменения семантики raw-данных" }
-                                .onFailure { failure ->
-                                    uiError = "Ошибка сохранения CNU: ${failure.message ?: "неизвестная ошибка"}"
-                                    snackbar.showSnackbar(uiError!!)
-                                }
-                            busy = false
-                        }
-                    }
+                busy = false
+            }
+        }
+    }
+    val saveCnu = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/octet-stream")
+    ) { uri ->
+        if (uri != null && cnuDocument != null) {
+            scope.launch {
+                busy = true
+                uiError = null
+                runCatching {
+                    context.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use {
+                        it.write(CnuCodec.encode(cnuDocument!!))
+                    } ?: error("Не удалось открыть CNU-файл")
+                }.onSuccess {
+                    status = "CNU сохранён без изменения семантики raw-данных"
+                }.onFailure { failure ->
+                    uiError = "Ошибка сохранения CNU: ${failure.message ?: "неизвестная ошибка"}"
+                    snackbar.showSnackbar(uiError!!)
                 }
-                    .onSuccess { status = "Конфигурация сохранена" }
-                    .onFailure { failure ->
-                        uiError = "Ошибка сохранения: ${failure.message ?: "неизвестная ошибка"}"
-                        snackbar.showSnackbar(uiError!!)
-                    }
                 busy = false
             }
         }
@@ -523,22 +524,23 @@ private fun ConfigurationTab(
                 }
 
                 /*
-                @OptIn(ExperimentalMaterial3Api::class)
                 @Composable
                 private fun AddressSelector(selected: Int, onSelected: (Int) -> Unit) {
                     var expanded by remember { mutableStateOf(false) }
-                    ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = !expanded }) {
+                    Column {
                         OutlinedTextField(
                             value = "Адрес $selected",
                             onValueChange = {},
                             readOnly = true,
                             label = { Text("Выбор адреса") },
-                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
-                            modifier = Modifier.menuAnchor().fillMaxWidth()
+                            modifier = Modifier.fillMaxWidth()
                         )
-                        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                        OutlinedButton(onClick = { expanded = !expanded }) {
+                            Text(if (expanded) "Скрыть адреса" else "Выбрать адрес")
+                        }
+                        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
                             (1..16).forEach { address ->
-                                androidx.compose.material3.DropdownMenuItem(
+                                DropdownMenuItem(
                                     text = { Text("Адрес $address") },
                                     onClick = {
                                         onSelected(address)
@@ -697,22 +699,23 @@ private fun ConfigurationTab(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AddressSelector(selected: Int, onSelected: (Int) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
-    ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = !expanded }) {
+    Column {
         OutlinedTextField(
             value = "Адрес $selected",
             onValueChange = {},
             readOnly = true,
             label = { Text("Выбор адреса") },
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
-            modifier = Modifier.menuAnchor().fillMaxWidth()
+            modifier = Modifier.fillMaxWidth()
         )
-        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+        OutlinedButton(onClick = { expanded = !expanded }) {
+            Text(if (expanded) "Скрыть адреса" else "Выбрать адрес")
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             (1..16).forEach { address ->
-                androidx.compose.material3.DropdownMenuItem(
+                DropdownMenuItem(
                     text = { Text("Адрес $address") },
                     onClick = {
                         onSelected(address)
