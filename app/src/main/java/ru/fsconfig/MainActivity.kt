@@ -451,6 +451,7 @@ private fun UsbHostPanel(usbHost: UsbHostController) {
                     Card(Modifier.fillMaxWidth()) {
                         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Text(info.displayName, style = MaterialTheme.typography.titleSmall)
+                            Text("Класс: ${info.adapterFamily}")
                             Text("Vendor ID: ${device.vendorId}; Product ID: ${device.productId}")
                             Text("Производитель: ${device.manufacturerName ?: "не предоставлен адаптером"}")
                             Text("Product: ${device.productName ?: "не предоставлен адаптером"}")

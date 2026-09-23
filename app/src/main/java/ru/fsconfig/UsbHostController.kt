@@ -18,9 +18,20 @@ data class UsbDeviceInfo(
     val device: UsbDevice,
     val hasPermission: Boolean
 ) {
+    val adapterFamily: String
+        get() = if (device.vendorId == CP210X_VENDOR_ID) {
+            "Silicon Labs CP210x USB-UART (Android driver не встроен)"
+        } else {
+            "Неизвестный USB-адаптер (драйвер не выбран)"
+        }
+
     val displayName: String
         get() = device.productName?.takeIf { it.isNotBlank() }
             ?: device.deviceName
+
+    private companion object {
+        const val CP210X_VENDOR_ID = 0x10C4
+    }
 }
 
 class UsbHostController(context: Context) : Closeable {
