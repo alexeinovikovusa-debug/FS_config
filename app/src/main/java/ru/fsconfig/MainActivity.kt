@@ -92,9 +92,9 @@ private fun FsConfigApp() {
             events.add(event)
             if (events.size > 100) events.removeFirst()
         }
-        DisposableEffect(usbHost) {
-            onDispose { usbHost.close() }
-        }
+    }
+    DisposableEffect(usbHost) {
+        onDispose { usbHost.close() }
     }
 
     val openFile = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
