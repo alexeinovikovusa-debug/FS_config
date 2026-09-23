@@ -45,6 +45,8 @@ import kotlinx.coroutines.launch
 import ru.fsconfig.model.ConfigurationDocument
 import ru.fsconfig.model.ConfigurationField
 import ru.fsconfig.model.ConfigurationJson
+import ru.fsconfig.model.CnuCodec
+import ru.fsconfig.model.CnuDocument
 import ru.fsconfig.model.ExchangeEvent
 import ru.fsconfig.model.FieldValue
 import ru.fsconfig.transport.SimulatorTransport
@@ -65,6 +67,8 @@ private fun FsConfigApp() {
     val events = remember { mutableStateListOf<ExchangeEvent>() }
     val snackbar = remember { SnackbarHostState() }
     var document by remember { mutableStateOf<ConfigurationDocument?>(null) }
+    var cnuDocument by remember { mutableStateOf<CnuDocument?>(null) }
+    var cnuWarnings by remember { mutableStateOf<List<String>>(emptyList()) }
     var status by remember { mutableStateOf("Подключите прибор или откройте файл конфигурации") }
     var tab by remember { mutableStateOf(0) }
     var busy by remember { mutableStateOf(false) }
@@ -108,6 +112,47 @@ private fun FsConfigApp() {
                     context.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use {
                         it.write(ConfigurationJson.encode(document!!))
                     } ?: error("Не удалось открыть файл")
+                }
+                val openCnu = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+                    if (uri != null) {
+                        scope.launch {
+                            busy = true
+                            uiError = null
+                            runCatching {
+                                val text = context.contentResolver.openInputStream(uri)?.bufferedReader()
+                                    ?.use { it.readText() } ?: error("Пустой CNU-файл")
+                                CnuCodec.parse(text)
+                            }.onSuccess { parsed ->
+                                cnuDocument = parsed.document
+                                cnuWarnings = parsed.warnings
+                                status = "Открыт CNU: ${parsed.document.rows.size} строк raw-конфигурации"
+                                tab = 3
+                            }.onFailure { failure ->
+                                uiError = "Ошибка CNU: ${failure.message ?: "неизвестная ошибка"}"
+                                snackbar.showSnackbar(uiError!!)
+                            }
+                            busy = false
+                        }
+                    }
+                }
+                val saveCnu = rememberLauncherForActivityResult(
+                    ActivityResultContracts.CreateDocument("application/octet-stream")
+                ) { uri ->
+                    if (uri != null && cnuDocument != null) {
+                        scope.launch {
+                            busy = true
+                            runCatching {
+                                context.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use {
+                                    it.write(CnuCodec.encode(cnuDocument!!))
+                                } ?: error("Не удалось открыть CNU-файл")
+                            }.onSuccess { status = "CNU сохранён без изменения семантики raw-данных" }
+                                .onFailure { failure ->
+                                    uiError = "Ошибка сохранения CNU: ${failure.message ?: "неизвестная ошибка"}"
+                                    snackbar.showSnackbar(uiError!!)
+                                }
+                            busy = false
+                        }
+                    }
                 }
                     .onSuccess { status = "Конфигурация сохранена" }
                     .onFailure { failure ->
@@ -182,8 +227,12 @@ private fun FsConfigApp() {
                     2 -> LogTab(events)
                     else -> FilesTab(
                         hasDocument = document != null,
+                        cnuDocument = cnuDocument,
+                        cnuWarnings = cnuWarnings,
                         onOpen = { openFile.launch(arrayOf("application/json", "text/plain")) },
-                        onSave = { saveFile.launch("fs-config.json") }
+                        onSave = { saveFile.launch("fs-config.json") },
+                        onOpenCnu = { openCnu.launch(arrayOf("application/octet-stream", "text/plain", "*/*")) },
+                        onSaveCnu = { saveCnu.launch("configuration.cnu") }
                     )
                 }
             }
@@ -276,18 +325,55 @@ private fun ConfigurationTab(
 }
 
 @Composable
-private fun FilesTab(hasDocument: Boolean, onOpen: () -> Unit, onSave: () -> Unit) {
-    Column(
+private fun FilesTab(
+    hasDocument: Boolean,
+    cnuDocument: CnuDocument?,
+    cnuWarnings: List<String>,
+    onOpen: () -> Unit,
+    onSave: () -> Unit,
+    onOpenCnu: () -> Unit,
+    onSaveCnu: () -> Unit
+) {
+    LazyColumn(
         Modifier.fillMaxSize().padding(20.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text("Файлы конфигурации", style = MaterialTheme.typography.headlineSmall)
-        Text("JSON-файлы можно открывать и сохранять без подключённого прибора.")
-        Button(onClick = onOpen) { Text("Открыть JSON") }
-        OutlinedButton(onClick = onSave, enabled = hasDocument) {
-            Text("Сохранить текущую конфигурацию")
+        item {
+            Text("Файлы конфигурации", style = MaterialTheme.typography.headlineSmall)
+            Text("JSON хранит модель приложения; CNU отображается как raw-текстовый контейнер.")
         }
-        if (!hasDocument) Text("Нет конфигурации для сохранения")
+        item {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = onOpen) { Text("Открыть JSON") }
+                OutlinedButton(onClick = onSave, enabled = hasDocument) { Text("Сохранить JSON") }
+            }
+        }
+        item {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = onOpenCnu) { Text("Открыть CNU") }
+                OutlinedButton(onClick = onSaveCnu, enabled = cnuDocument != null) { Text("Сохранить CNU") }
+            }
+        }
+        item {
+            Text(
+                "Предупреждение: байты CNU не получают смыслов и не отправляются в прибор. " +
+                    "Редактирование протокола и запись в устройство пока недоступны.",
+                color = MaterialTheme.colorScheme.error
+            )
+        }
+        cnuDocument?.let { cnu ->
+            item { Text("Метаданные CNU", style = MaterialTheme.typography.titleMedium) }
+            items(cnu.header) { entry -> Text("${entry.key} = ${entry.value}") }
+            item { Text("Raw-строки: ${cnu.rows.size}; значений: ${cnu.rows.sumOf { it.size }}") }
+            if (cnuWarnings.isNotEmpty()) {
+                item { Text("Предупреждения", style = MaterialTheme.typography.titleMedium) }
+                items(cnuWarnings) { warning -> Text("• $warning", color = MaterialTheme.colorScheme.error) }
+            }
+            item { Text("Первые raw-строки", style = MaterialTheme.typography.titleMedium) }
+            items(cnu.originalRowLines.take(5)) { line ->
+                Text(line, style = MaterialTheme.typography.bodySmall)
+            }
+        }
     }
 }
 
