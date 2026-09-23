@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - master
+      - pskotenot-hash-android-configurator-plan
   workflow_dispatch:
 
 permissions:

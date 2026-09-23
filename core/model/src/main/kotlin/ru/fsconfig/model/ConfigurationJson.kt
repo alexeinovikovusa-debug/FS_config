@@ -1,9 +1,6 @@
 package ru.fsconfig.model
 
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.decodeFromString
-import kotlinx.serialization.encodeToString
-
 object ConfigurationJson {
     private val json = Json {
         encodeDefaults = true
@@ -11,7 +8,9 @@ object ConfigurationJson {
         ignoreUnknownKeys = true
     }
 
-    fun encode(document: ConfigurationDocument): String = json.encodeToString(document)
+    fun encode(document: ConfigurationDocument): String =
+        json.encodeToString(ConfigurationDocument.serializer(), document)
 
-    fun decode(value: String): ConfigurationDocument = json.decodeFromString(value)
+    fun decode(value: String): ConfigurationDocument =
+        json.decodeFromString(ConfigurationDocument.serializer(), value)
 }
