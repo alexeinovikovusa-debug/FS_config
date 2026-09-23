@@ -12,6 +12,7 @@ import ru.fsconfig.model.FieldValue
 import ru.fsconfig.model.TransportKind
 import ru.fsconfig.model.ConnectionProfile
 import ru.fsconfig.model.ConnectionProfileValidator
+import ru.fsconfig.model.MvpDeviceProfiles
 
 class SimulatorTransport : DeviceTransport, ChannelTester {
     private val eventStream = MutableSharedFlow<ExchangeEvent>(extraBufferCapacity = 32)
@@ -54,9 +55,10 @@ class SimulatorTransport : DeviceTransport, ChannelTester {
         device = DeviceDescriptor(
             transport = TransportKind.SIMULATOR,
             address = "simulator-01",
-            model = "FS Demo",
+            model = MvpDeviceProfiles.c2000Kdl.model,
             serialNumber = "SIM-0001",
-            firmwareVersion = "0.1"
+            firmwareVersion = MvpDeviceProfiles.c2000Kdl.firmwareVersion,
+            protocolRevision = MvpDeviceProfiles.c2000Kdl.protocolRevision
         ),
         capturedAtEpochMillis = System.currentTimeMillis(),
         sections = listOf(

@@ -35,6 +35,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -70,6 +71,7 @@ class MainActivity : ComponentActivity() {
 private fun FsConfigApp() {
     val transport = remember { SimulatorTransport() }
     val context = LocalContext.current
+    val usbHost = remember { UsbHostController(context) }
     val scope = rememberCoroutineScope()
     val events = remember { mutableStateListOf<ExchangeEvent>() }
     val snackbar = remember { SnackbarHostState() }
@@ -89,6 +91,9 @@ private fun FsConfigApp() {
         transport.events.collect { event ->
             events.add(event)
             if (events.size > 100) events.removeFirst()
+        }
+        DisposableEffect(usbHost) {
+            onDispose { usbHost.close() }
         }
     }
 
@@ -202,6 +207,7 @@ private fun FsConfigApp() {
                         profile = profile,
                         profileSaved = profileSaved,
                         channelStatus = channelStatus,
+                        usbHost = usbHost,
                         onProfileChange = { profile = it; profileSaved = false },
                         onSaveProfile = {
                             savedProfiles.removeAll { it.id == profile.id }
@@ -368,6 +374,7 @@ private fun ConnectTab(
     profileSaved: Boolean,
     savedProfileCount: Int,
     channelStatus: String,
+    usbHost: UsbHostController,
     onProfileChange: (ConnectionProfile) -> Unit,
     onSaveProfile: () -> Unit,
     onTestChannel: () -> Unit,
@@ -388,16 +395,14 @@ private fun ConnectTab(
             Text("USB-переходники и сетевые точки появятся после реализации официального транспорта.")
         }
         item {
+            UsbHostPanel(usbHost)
+        }
+        item {
             ConnectionProfileEditor(profile, profileSaved, savedProfileCount, channelStatus, onProfileChange, onSaveProfile, onTestChannel)
         }
         item {
-            Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("USB / RS-485", style = MaterialTheme.typography.titleMedium)
-                    Text("Состояние: не подключён")
-                    Text("Автоматический поиск доступен в simulator")
-                }
-            }
+            Text("USB / RS-485", style = MaterialTheme.typography.titleMedium)
+            Text("Проверка ограничена USB Host: обнаружение, разрешение и открытие/закрытие канала.")
         }
         item {
             Card(Modifier.fillMaxWidth()) {
@@ -428,6 +433,48 @@ private fun ConnectTab(
                 Button(onClick = onDiscover) { Text("Найти simulator") }
                 OutlinedButton(onClick = onRealDevice) { Text("Реальный канал") }
             }
+        }
+    }
+}
+
+@Composable
+private fun UsbHostPanel(usbHost: UsbHostController) {
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("USB Host / OTG", style = MaterialTheme.typography.titleMedium)
+            Text(usbHost.status)
+            if (usbHost.devices.isEmpty()) {
+                Text("Подключите USB-RS-485 адаптер через OTG и обновите список.")
+            } else {
+                usbHost.devices.forEach { info ->
+                    val device = info.device
+                    Card(Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(info.displayName, style = MaterialTheme.typography.titleSmall)
+                            Text("Vendor ID: ${device.vendorId}; Product ID: ${device.productId}")
+                            Text("Производитель: ${device.manufacturerName ?: "не предоставлен адаптером"}")
+                            Text("Product: ${device.productName ?: "не предоставлен адаптером"}")
+                            Text("USB permission: ${if (info.hasPermission) "предоставлено" else "не предоставлено"}")
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                if (!info.hasPermission) {
+                                    OutlinedButton(onClick = { usbHost.requestPermission(info) }) {
+                                        Text("Разрешить доступ")
+                                    }
+                                }
+                                Button(onClick = { usbHost.testOpenClose(info) }) {
+                                    Text("Открыть/закрыть")
+                                }
+                            }
+                            Text(
+                                "Драйвер serial и протокол не выбираются автоматически; frames/read/write заблокированы.",
+                                color = MaterialTheme.colorScheme.error,
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                    }
+                }
+            }
+            OutlinedButton(onClick = usbHost::refresh) { Text("Обновить USB-список") }
         }
     }
 }

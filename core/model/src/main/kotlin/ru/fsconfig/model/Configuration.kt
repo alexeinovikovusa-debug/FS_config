@@ -13,6 +13,18 @@ data class DeviceDescriptor(
 )
 
 @Serializable
+data class DeviceProfileTarget(
+    val model: String,
+    val firmwareVersion: String? = null,
+    val protocolRevision: String? = null,
+    val rs485Address: Int? = null
+)
+
+object MvpDeviceProfiles {
+    val c2000Kdl = DeviceProfileTarget(model = "С2000-КДЛ")
+}
+
+@Serializable
 enum class TransportKind { USB_RS485, WIFI, SIMULATOR }
 
 @Serializable
