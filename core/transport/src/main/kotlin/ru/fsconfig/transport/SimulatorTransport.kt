@@ -10,8 +10,10 @@ import ru.fsconfig.model.DeviceDescriptor
 import ru.fsconfig.model.ExchangeEvent
 import ru.fsconfig.model.FieldValue
 import ru.fsconfig.model.TransportKind
+import ru.fsconfig.model.ConnectionProfile
+import ru.fsconfig.model.ConnectionProfileValidator
 
-class SimulatorTransport : DeviceTransport {
+class SimulatorTransport : DeviceTransport, ChannelTester {
     private val eventStream = MutableSharedFlow<ExchangeEvent>(extraBufferCapacity = 32)
     private val stored = AtomicReference(defaultConfiguration())
     override val events: SharedFlow<ExchangeEvent> = eventStream
@@ -33,6 +35,13 @@ class SimulatorTransport : DeviceTransport {
         stored.set(configuration)
         info("Конфигурация записана в simulator")
         return Result.success(Unit)
+    }
+
+    override suspend fun testChannel(profile: ConnectionProfile): Result<ChannelTestResult> {
+        val validation = ConnectionProfileValidator.validate(profile)
+        if (!validation.isValid) return Result.failure(IllegalArgumentException(validation.errors.joinToString("; ")))
+        info("Проверен профиль канала: ${profile.name}")
+        return Result.success(ChannelTestResult(true, "Simulator: канал доступен, protocol exchange заблокирован", false))
     }
 
     private fun info(message: String) {

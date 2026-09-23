@@ -54,6 +54,7 @@ import ru.fsconfig.model.ConfigurationField
 import ru.fsconfig.model.ConfigurationJson
 import ru.fsconfig.model.CnuCodec
 import ru.fsconfig.model.CnuDocument
+import ru.fsconfig.model.ConnectionProfile
 import ru.fsconfig.model.ExchangeEvent
 import ru.fsconfig.model.FieldValue
 import ru.fsconfig.transport.SimulatorTransport
@@ -80,6 +81,10 @@ private fun FsConfigApp() {
     var tab by remember { mutableStateOf(0) }
     var busy by remember { mutableStateOf(false) }
     var uiError by remember { mutableStateOf<String?>(null) }
+    var profile by remember { mutableStateOf<ConnectionProfile>(ConnectionProfile.UsbSerial("usb", "USB RS-485")) }
+    val savedProfiles = remember { mutableStateListOf<ConnectionProfile>() }
+    var profileSaved by remember { mutableStateOf(false) }
+    var channelStatus by remember { mutableStateOf("Канал ещё не проверялся") }
 
     LaunchedEffect(transport) {
         transport.events.collect { event ->
@@ -193,6 +198,25 @@ private fun FsConfigApp() {
                         status = status,
                         error = uiError,
                         document = document,
+                        profile = profile,
+                        profileSaved = profileSaved,
+                        channelStatus = channelStatus,
+                        onProfileChange = { profile = it; profileSaved = false },
+                        onSaveProfile = {
+                            savedProfiles.removeAll { it.id == profile.id }
+                            savedProfiles.add(profile)
+                            profileSaved = true
+                        },
+                        savedProfileCount = savedProfiles.size,
+                        onTestChannel = {
+                            scope.launch {
+                                busy = true
+                                transport.testChannel(profile)
+                                    .onSuccess { channelStatus = it.message }
+                                    .onFailure { uiError = it.message }
+                                busy = false
+                            }
+                        },
                         onDiscover = {
                             scope.launch {
                                 busy = true
@@ -249,6 +273,81 @@ private fun FsConfigApp() {
 }
 
 @Composable
+private fun ConnectionProfileEditor(
+    profile: ConnectionProfile,
+    saved: Boolean,
+    savedProfileCount: Int,
+    channelStatus: String,
+    onChange: (ConnectionProfile) -> Unit,
+    onSave: () -> Unit,
+    onTest: () -> Unit
+) {
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Профиль подключения", style = MaterialTheme.typography.titleMedium)
+            Text("Сохранённых профилей: $savedProfileCount")
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = { onChange(ConnectionProfile.UsbSerial("usb", "USB RS-485")) }) {
+                    Text("USB Serial")
+                }
+                OutlinedButton(onClick = { onChange(ConnectionProfile.ConfigTcp("tcp", "Config по Wi-Fi")) }) {
+                    Text("Config по Wi-Fi")
+                }
+            }
+            when (profile) {
+                is ConnectionProfile.UsbSerial -> {
+                    OutlinedTextField(
+                        value = profile.portName,
+                        onValueChange = { onChange(profile.copy(portName = it)) },
+                        label = { Text("USB serial-порт") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = profile.baudRate.toString(),
+                        onValueChange = { it.toIntOrNull()?.let { value -> onChange(profile.copy(baudRate = value)) } },
+                        label = { Text("Baud rate") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Text("Data bits: ${profile.dataBits}; parity: ${profile.parity}; stop bits: ${profile.stopBits}")
+                    OutlinedTextField(
+                        value = profile.rs485Address.toString(),
+                        onValueChange = { it.toIntOrNull()?.let { value -> onChange(profile.copy(rs485Address = value)) } },
+                        label = { Text("Адрес RS-485 (1–247)") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Text("Flow control: ${profile.flowControl}")
+                }
+                is ConnectionProfile.ConfigTcp -> {
+                    OutlinedTextField(
+                        value = profile.host,
+                        onValueChange = { onChange(profile.copy(host = it)) },
+                        label = { Text("IP-адрес или имя шлюза") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = profile.port.toString(),
+                        onValueChange = { it.toIntOrNull()?.let { value -> onChange(profile.copy(port = value)) } },
+                        label = { Text("TCP-порт") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Text("Config по Wi-Fi — только TCP/IP канал; обмен протоколом заблокирован")
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = onSave) { Text(if (saved) "Профиль сохранён" else "Сохранить профиль") }
+                OutlinedButton(onClick = onTest) { Text("Проверить канал") }
+            }
+            Text(channelStatus, style = MaterialTheme.typography.bodySmall)
+            Text(
+                "Проверка канала не означает поддержку протокола: framing и команды появятся только по официальной спецификации.",
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall
+            )
+        }
+    }
+}
+
+@Composable
 private fun LoadingState() {
     Column(
         Modifier.fillMaxSize().padding(24.dp),
@@ -264,6 +363,13 @@ private fun ConnectTab(
     status: String,
     error: String?,
     document: ConfigurationDocument?,
+    profile: ConnectionProfile,
+    profileSaved: Boolean,
+    savedProfileCount: Int,
+    channelStatus: String,
+    onProfileChange: (ConnectionProfile) -> Unit,
+    onSaveProfile: () -> Unit,
+    onTestChannel: () -> Unit,
     onDiscover: () -> Unit,
     onRealDevice: () -> Unit
 ) {
@@ -279,6 +385,9 @@ private fun ConnectTab(
         item {
             Text("Доступные каналы", style = MaterialTheme.typography.titleMedium)
             Text("USB-переходники и сетевые точки появятся после реализации официального транспорта.")
+        }
+        item {
+            ConnectionProfileEditor(profile, profileSaved, savedProfileCount, channelStatus, onProfileChange, onSaveProfile, onTestChannel)
         }
         item {
             Card(Modifier.fillMaxWidth()) {
